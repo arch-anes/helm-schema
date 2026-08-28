@@ -149,6 +149,70 @@ func TestGenerateOpenParentOpensKnownChildContract(t *testing.T) {
 	}
 }
 
+func TestGenerateOpenParentDoesNotFixKnownScalarShape(t *testing.T) {
+	t.Parallel()
+
+	got, err := Generate(map[string]any{
+		"settings": map[string]any{"enabled": true},
+	}, nil, &analyze.Usage{Properties: map[string]*analyze.Usage{
+		"settings": {Open: true},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	enabled := property(t, property(t, decodeSchema(t, got), "settings"), "enabled")
+	if _, constrained := enabled["type"]; constrained {
+		t.Fatalf("complete parent use fixed a known scalar shape: %#v", enabled)
+	}
+}
+
+func TestGenerateOpenParentDoesNotFixKnownArrayShape(t *testing.T) {
+	t.Parallel()
+
+	got, err := Generate(map[string]any{
+		"settings": map[string]any{"rules": []any{"default"}},
+	}, nil, &analyze.Usage{Properties: map[string]*analyze.Usage{
+		"settings": {Open: true},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rules := property(t, property(t, decodeSchema(t, got), "settings"), "rules")
+	if _, constrained := rules["type"]; constrained {
+		t.Fatalf("complete parent use fixed a known array shape: %#v", rules)
+	}
+}
+
+func TestGenerateGuardedDynamicEntryAllowsNull(t *testing.T) {
+	t.Parallel()
+
+	got, err := Generate(map[string]any{
+		"ports": map[string]any{
+			"http": map[string]any{"port": 80},
+		},
+	}, nil, &analyze.Usage{Properties: map[string]*analyze.Usage{
+		"ports": {Elements: &analyze.Usage{
+			Read: true,
+			Properties: map[string]*analyze.Usage{"port": {Read: true}},
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ports := property(t, decodeSchema(t, got), "ports")
+	object, ok := ports["anyOf"].([]any)[0].(map[string]any)
+	if !ok {
+		t.Fatalf("dynamic object alternative is missing: %#v", ports)
+	}
+	entry := property(t, object, "http")
+	if !schemaAllowsNull(entry) {
+		t.Fatalf("guarded dynamic entry rejects null: %#v", entry)
+	}
+}
+
 func TestGenerateObjectReadAllowsMembershipChangesOnlyWhenEmpty(t *testing.T) {
 	t.Parallel()
 

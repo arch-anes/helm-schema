@@ -196,6 +196,7 @@ func documentAllowsNull(value *document) bool {
 // buildValue combines one default node with its usage node. It selects fixed,
 // configurable, open, or shape-alternative schema rules.
 func (b *builder) buildValue(value any, exists bool, usage *analyze.Usage, pointer string, inheritedUsed, inheritedOpen bool) (*document, error) {
+	directUsage := usage != nil
 	if usage == nil && !inheritedUsed && !inheritedOpen {
 		if !exists {
 			return &document{}, nil
@@ -300,6 +301,16 @@ func (b *builder) buildValue(value any, exists bool, usage *analyze.Usage, point
 			return nil, err
 		}
 	case kindArray:
+		if inheritedOpen && !directUsage {
+			if exists {
+				defaultValue, err := rawValue(value)
+				if err != nil {
+					return nil, pathError(pointer, "default cannot be represented as JSON", err)
+				}
+				result.Default = defaultValue
+			}
+			return result, nil
+		}
 		if wantsObject {
 			return nil, pathError(pointer, "default is an array but "+objectEvidence(usage), nil)
 		}
@@ -332,7 +343,7 @@ func (b *builder) buildValue(value any, exists bool, usage *analyze.Usage, point
 		if wantsArray {
 			return nil, pathError(pointer, "default is a scalar but template usage requires an array", nil)
 		}
-		if text, templated := value.(string); !templated || !strings.Contains(text, "{{") {
+		if text, templated := value.(string); (!inheritedOpen || directUsage) && (!templated || !strings.Contains(text, "{{")) {
 			result.Type = inferScalarType(value)
 		}
 		if configurable(usage, used) {
@@ -613,6 +624,11 @@ func (b *builder) buildObject(result *document, defaults map[string]any, usage *
 		if err != nil {
 			return err
 		}
+		if namedUsage == nil && dynamicValueUsage != nil && dynamicValueUsage.Read && hasStructuralUsage(dynamicValueUsage) {
+			// A guarded dynamic entry may be null before the template selects
+			// fields from it.
+			permitNull(child)
+		}
 		properties[key] = child
 	}
 
@@ -725,6 +741,11 @@ func (b *builder) buildUniformSchema(examples []any, usage *analyze.Usage, point
 	}
 	if uniform == nil {
 		return b.buildValue(nil, false, usage, pointer, false, false)
+	}
+	if usage != nil && usage.Read && hasStructuralUsage(usage) {
+		// A guarded dynamic entry can be null: the template reads the entry to
+		// decide whether to render it before selecting any fields below it.
+		permitNull(uniform)
 	}
 	return uniform, nil
 }

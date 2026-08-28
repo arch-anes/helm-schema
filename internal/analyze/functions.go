@@ -63,7 +63,7 @@ var originPreservingFunctions = stringSet(
 	"indent", "nindent", "quote", "squote",
 	"mustFromJson", "mustToJson", "mustToPrettyJson", "mustToRawJson",
 	"mustToToml", "mustToYaml", "toJson", "toPrettyJson", "toRawJson",
-	"toString", "toStrings", "toToml", "toYaml", "toYamlPretty",
+	"toString", "toStrings", "toToml", "toYaml", "toYamlPretty", "replace",
 	"trim", "trimAll", "trimPrefix", "trimSuffix",
 )
 

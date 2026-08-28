@@ -539,6 +539,13 @@ func TestWhitespaceTransformKeepsUsageForLaterOutput(t *testing.T) {
 	}
 }
 
+func TestStringReplacementKeepsUsageForLaterOutput(t *testing.T) {
+	usage := analyzeTemplate(t, `{{ .Values.payload | toYaml | replace "old" "new" }}`)
+	if !requireProperty(t, usage, "payload").Open {
+		t.Fatalf("string replacement lost output usage: %#v", usage)
+	}
+}
+
 func TestCollectionKeyInspectionDoesNotOpenValues(t *testing.T) {
 	usage := analyzeTemplate(t, `{{ keys .Values.settings }}{{ len .Values.other }}`)
 	for _, name := range []string{"settings", "other"} {
