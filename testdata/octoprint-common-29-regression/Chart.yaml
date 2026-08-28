@@ -1,0 +1,7 @@
+apiVersion: v2
+name: octoprint-common-29-regression
+version: 1.0.0
+dependencies:
+  - name: common
+    version: 29.7.1
+    repository: file://charts/common

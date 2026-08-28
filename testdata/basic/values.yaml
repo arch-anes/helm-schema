@@ -1,0 +1,31 @@
+# Number of application replicas.
+replicaCount: 1
+
+# Container image values.
+image:
+  repository: example/application
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Arbitrary annotations for the pod.
+podAnnotations: {}
+
+# Name of the selected service port.
+selectedPort: web
+
+# Service ports keyed by name.
+ports:
+  web:
+    port: 8080
+    internalNote: fixed
+
+# Route values intentionally omit the template-read annotations child.
+route: {}
+
+# Items rendered by name.
+items:
+  - name: first
+    internalNote: fixed
+
+# This setting is not read by an executable template.
+unusedSetting: unchanged

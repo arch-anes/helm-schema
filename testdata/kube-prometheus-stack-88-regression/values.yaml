@@ -1,0 +1,6 @@
+prometheus:
+  prometheusSpec:
+    externalUrl: ""
+    retentionSize: ""
+    templatedUrl: '{{ .Values.prometheus.prometheusSpec.embedded }}'
+    unusedTemplate: '{{ .Values.prometheus.prometheusSpec.unusedEmbedded }}'

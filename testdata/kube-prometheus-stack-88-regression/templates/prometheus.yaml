@@ -1,0 +1,8 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: example
+spec:
+  externalUrl: {{ tpl .Values.prometheus.prometheusSpec.externalUrl . | quote }}
+  retentionSize: {{ .Values.prometheus.prometheusSpec.retentionSize | quote }}
+  templatedUrl: {{ tpl .Values.prometheus.prometheusSpec.templatedUrl . | quote }}

@@ -1,0 +1,8 @@
+service:
+  main:
+    enabled: true
+    ports:
+      main:
+        enabled: true
+        port: 10021
+        targetPort: 80

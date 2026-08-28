@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-basic
+  annotations:
+    {{- toYaml .Values.podAnnotations | nindent 4 }}
+data:
+  replicas: {{ .Values.replicaCount | quote }}
+  image: {{ include "basic.image" .Values.image | quote }}
+  selectedPort: {{ (index .Values.ports .Values.selectedPort).port | quote }}
+  routeAnnotations: {{ dig "annotations" (dict) .Values.route | toJson | quote }}
+  itemNames: {{ range .Values.items }}{{ .name }},{{ end }}
