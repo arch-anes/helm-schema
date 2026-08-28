@@ -564,6 +564,13 @@ func TestHelmPluginInstallAndRun(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(pluginSource, "plugin.yaml"), manifest, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	installScript, err := os.ReadFile(filepath.Join(projectRoot, "install.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginSource, "install.sh"), installScript, 0o700); err != nil {
+		t.Fatal(err)
+	}
 
 	dataHome := filepath.Join(temporary, "data")
 	pluginDirectory := filepath.Join(dataHome, "plugins")

@@ -14,3 +14,14 @@ runtimeConfig:
     - os: windows
       command: '${HELM_PLUGIN_DIR}\bin\helm-schema.exe'
     - command: '${HELM_PLUGIN_DIR}/bin/helm-schema'
+  platformHooks:
+    install:
+      - os: windows
+        command: powershell
+        args:
+          - -NoProfile
+          - -ExecutionPolicy
+          - Bypass
+          - -File
+          - '${HELM_PLUGIN_DIR}\install.ps1'
+      - command: '${HELM_PLUGIN_DIR}/install.sh'

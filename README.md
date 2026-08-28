@@ -100,6 +100,15 @@ helm plugin install ./.dist/schema
 helm schema ./path/to/chart
 ```
 
+Installing directly from the Git repository also works when Go is installed:
+
+```sh
+helm plugin install https://github.com/arch-anes/helm-schema.git --verify=false
+```
+
+The install hook builds the native executable in the plugin directory. A
+release package is preferred for users who do not have Go installed.
+
 Create an unsigned package for local testing:
 
 ```sh
