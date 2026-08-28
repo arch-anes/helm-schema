@@ -18,6 +18,7 @@ import (
 	"github.com/arch-anes/helm-schema/internal/helmchart"
 	"github.com/arch-anes/helm-schema/internal/schema"
 	chartarchive "helm.sh/helm/v4/pkg/chart/loader/archive"
+	chartv2loader "helm.sh/helm/v4/pkg/chart/v2/loader"
 )
 
 // version contains the build version printed by the --version flag.
@@ -34,6 +35,16 @@ func main() {
 // run parses the command arguments, prepares and validates every schema, then
 // writes the results. Writer arguments let tests capture output safely.
 func run(args []string, stdout, stderr io.Writer) error {
+	return runWithInput(args, os.Stdin, stdout, stderr)
+}
+
+// runWithInput selects generation or schema validation. The separate input
+// parameter keeps command tests independent from process standard input.
+func runWithInput(args []string, input io.Reader, stdout, stderr io.Writer) error {
+	if len(args) > 0 && args[0] == "validate" {
+		return validate(args[1:], input, stdout)
+	}
+
 	chartPath, done, err := parseArguments(args, stdout)
 	if err != nil {
 		return err
@@ -84,6 +95,25 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 	writePrecisionNote(stderr, allowsUnknownRoot)
 	writeSummary(stdout, generated, changed)
+	return nil
+}
+
+// validate reads YAML values and validates them with Helm's own schema
+// validator. It never renders templates, so deployment-time cluster
+// capabilities cannot affect schema validation.
+func validate(args []string, input io.Reader, stdout io.Writer) error {
+	chartPath, done, err := parseValidationArguments(args, stdout)
+	if err != nil || done {
+		return err
+	}
+	values, err := chartv2loader.LoadValues(input)
+	if err != nil {
+		return fmt.Errorf("parse values YAML: %w", err)
+	}
+	if err := helmchart.ValidateValues(chartPath, values); err != nil {
+		return err
+	}
+	fmt.Fprintln(stdout, "values match chart schemas")
 	return nil
 }
 
@@ -176,6 +206,28 @@ func parseArguments(args []string, stdout io.Writer) (chartPath string, done boo
 	return ".", false, nil
 }
 
+// parseValidationArguments accepts the optional chart path for the validation
+// command. Values always arrive as one YAML document on standard input.
+func parseValidationArguments(args []string, stdout io.Writer) (chartPath string, done bool, err error) {
+	flags := flag.NewFlagSet("helm-schema validate", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	flags.Usage = func() { writeValidationHelp(stdout) }
+
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return "", true, nil
+		}
+		return "", false, err
+	}
+	if flags.NArg() > 1 {
+		return "", false, errors.New("usage: helm-schema validate [CHART]")
+	}
+	if flags.NArg() == 1 {
+		return flags.Arg(0), false, nil
+	}
+	return ".", false, nil
+}
+
 // writePrecisionNote reports one material loss of schema strictness across the
 // selected chart and its dependencies.
 func writePrecisionNote(w io.Writer, allowsUnknownRoot bool) {
@@ -208,7 +260,18 @@ func writeHelp(w io.Writer) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Usage:")
 	fmt.Fprintln(w, "  helm-schema [CHART]")
+	fmt.Fprintln(w, "  helm-schema validate [CHART] < values.yaml")
 	fmt.Fprintln(w, "  helm schema [CHART]")
+	fmt.Fprintln(w, "  helm schema validate [CHART] < values.yaml")
+}
+
+// writeValidationHelp documents the schema-only validation command.
+func writeValidationHelp(w io.Writer) {
+	fmt.Fprintln(w, "Validate a YAML values document against Helm chart schemas.")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Usage:")
+	fmt.Fprintln(w, "  helm-schema validate [CHART] < values.yaml")
+	fmt.Fprintln(w, "  helm schema validate [CHART] < values.yaml")
 }
 
 // replaceFile writes content beside the target and renames it into place. It

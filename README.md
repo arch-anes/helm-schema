@@ -32,7 +32,9 @@ The command stays quiet for local precision limits.
 
 If a generated schema permits root names that templates do not name statically, the command writes one note.
 
-Argument parsing uses Go's standard `flag` package. This command has no subcommands or generation options, so a larger command framework is not needed.
+Argument parsing uses Go's standard `flag` package. Generation has no options,
+and the only subcommand is `validate`, so a larger command framework is not
+needed.
 
 ## Open and closed objects
 
@@ -78,7 +80,7 @@ The binary is written to `bin/helm-schema`.
 
 ```sh
 bin/helm-schema ./path/to/chart
-helm lint ./path/to/chart
+helm schema ./path/to/chart
 ```
 
 The chart path defaults to the current directory:
@@ -90,6 +92,19 @@ cd ./path/to/chart
 
 Generation uses only local chart files. It does not download dependencies or contact a Kubernetes cluster.
 
+Validate one YAML override document against the generated schemas without
+rendering templates:
+
+```sh
+bin/helm-schema validate ./path/to/chart < values.yaml
+helm schema validate ./path/to/chart < values.yaml
+```
+
+This uses Helm's dependency processing, value coalescing, and JSON Schema
+validator. It does not use `helm lint`: lint also checks each source template
+as standalone YAML and can reject legacy Chart API v2 templates that Helm
+renders and installs.
+
 ## Use the Helm 4 plugin
 
 Prepare and install a local development plugin:
@@ -98,6 +113,7 @@ Prepare and install a local development plugin:
 make plugin-dir
 helm plugin install ./.dist/schema
 helm schema ./path/to/chart
+helm schema validate ./path/to/chart < values.yaml
 ```
 
 Installing directly from the Git repository also works when Go is installed:
@@ -141,11 +157,11 @@ Each production file has one primary responsibility:
 
 | File | Responsibility |
 |---|---|
-| `cmd/helm-schema/main.go` | Parses arguments, prepares all schemas, validates the chart tree, and replaces schema files. |
+| `cmd/helm-schema/main.go` | Parses commands, generates schemas, validates override input, and replaces schema files. |
 | `internal/helmchart/load.go` | Loads Helm 4 charts, dependencies, defaults, scopes, and metadata value flows. |
 | `internal/helmchart/descriptions.go` | Reads descriptions from comments in root and dependency `values.yaml` files. |
 | `internal/helmchart/templates.go` | Converts chart templates, contexts, and deferred `tpl` text into analyzer inputs. |
-| `internal/helmchart/validation.go` | Validates generated root and dependency schemas with Helm value processing. |
+| `internal/helmchart/validation.go` | Validates generated schemas and override values with Helm value processing. |
 | `internal/analyze/types.go` | Defines analyzer inputs, diagnostics, value flows, and the usage tree. |
 | `internal/analyze/analyze.go` | Parses template files, creates entry contexts, and starts analysis. |
 | `internal/analyze/eval.go` | Evaluates control flow, variables, pipelines, and named-template output. |

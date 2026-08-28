@@ -1,7 +1,7 @@
 package main
 
-// This file tests command behavior, safe file replacement, Helm lint, and the
-// packaged Helm plugin.
+// This file tests command behavior, safe file replacement, schema validation,
+// and the packaged Helm plugin.
 
 import (
 	"bytes"
@@ -68,6 +68,38 @@ func TestVersion(t *testing.T) {
 	}
 	if stdout.String() != "helm-schema dev\n" {
 		t.Fatalf("version output = %q", stdout.String())
+	}
+}
+
+func TestValidateChecksGeneratedSchemasWithoutRenderingTemplates(t *testing.T) {
+	chartDirectory := copyBasicChart(t)
+	if err := run([]string{chartDirectory}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	valid := "replicaCount: 3\nroute:\n  annotations:\n    generatedAt: 2025-01-01\n"
+	if err := runWithInput(
+		[]string{"validate", chartDirectory},
+		strings.NewReader(valid),
+		&stdout,
+		&bytes.Buffer{},
+	); err != nil {
+		t.Fatalf("validate valid values: %v", err)
+	}
+	if stdout.String() != "values match chart schemas\n" {
+		t.Fatalf("validation output = %q", stdout.String())
+	}
+
+	invalid := "misspelled: true\n"
+	err := runWithInput(
+		[]string{"validate", chartDirectory},
+		strings.NewReader(invalid),
+		&bytes.Buffer{},
+		&bytes.Buffer{},
+	)
+	if err == nil || !strings.Contains(err.Error(), "misspelled") {
+		t.Fatalf("invalid values error = %v", err)
 	}
 }
 
