@@ -650,7 +650,8 @@ func (b *builder) buildObject(result *document, defaults map[string]any, usage *
 		result.AdditionalProperties = additional
 	case allowsUnnamedProperties(defaults, usage, open):
 		// Dynamic context use and iteration can depend on new object members. A
-		// truth test needs new keys only when the default object is empty.
+		// truth test without a field contract needs new keys only when the
+		// default object is empty.
 		result.AdditionalProperties = true
 	default:
 		result.AdditionalProperties = false
@@ -685,7 +686,7 @@ func dynamicUsageMatchesKnownProperty(value any, named, dynamic *analyze.Usage) 
 // without fixed template references.
 func allowsUnnamedProperties(defaults map[string]any, usage *analyze.Usage, open bool) bool {
 	return open || usage.AllowUnknown || usage.Iterated || usage.Additional != nil ||
-		usage.Elements != nil || usage.Read && defaultObjectIsEmpty(defaults)
+		usage.Elements != nil || usage.Read && !hasStructuralUsage(usage) && defaultObjectIsEmpty(defaults)
 }
 
 // defaultObjectIsEmpty reports whether Helm removes every direct default

@@ -5,9 +5,9 @@ version: 0.1.0
 runtime: subprocess
 sourceURL: https://github.com/arch-anes/helm-schema
 config:
-  usage: schema [CHART] | schema validate [CHART] < values.yaml
-  shortHelp: Generate and validate values.schema.json files
-  longHelp: Generate schemas from Helm template usage or validate YAML values against generated schemas.
+  usage: schema [CHART]
+  shortHelp: Generate values.schema.json files
+  longHelp: Generate schemas from Helm template usage.
   ignoreFlags: false
 runtimeConfig:
   platformCommand:

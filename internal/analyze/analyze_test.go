@@ -57,6 +57,60 @@ func TestUsageMergeIsMonotonic(t *testing.T) {
 	}
 }
 
+func TestContextObservationRespectsValuesRoots(t *testing.T) {
+	t.Run("unrestricted context includes roots", func(t *testing.T) {
+		a := analyzer{usage: NewUsage()}
+
+		a.observe(referenceValue(referenceForScope()), contextValue)
+
+		if !a.usage.AllowUnknown {
+			t.Fatal("unrestricted context observation did not open the values root")
+		}
+	})
+
+	t.Run("selected values below roots", func(t *testing.T) {
+		root := referenceForScope()
+		dependency := referenceForScope("child")
+		context := objectValue(map[string]value{
+			"root":               referenceValue(root),
+			"rootSettings":       referenceValue(root.append(segment{kind: propertySegment, name: "settings"})),
+			"dependency":         referenceValue(dependency),
+			"dependencySettings": referenceValue(dependency.append(segment{kind: propertySegment, name: "settings"})),
+		})
+		a := analyzer{usage: NewUsage()}
+
+		a.observe(context, subtreeContextValue)
+
+		if a.usage.AllowUnknown {
+			t.Fatal("context observation opened the selected chart root")
+		}
+		if !requireProperty(t, a.usage, "settings").AllowUnknown {
+			t.Fatal("context observation did not open a selected root subtree")
+		}
+		child := requireProperty(t, a.usage, "child")
+		if child.AllowUnknown {
+			t.Fatal("context observation opened the dependency root")
+		}
+		if !requireProperty(t, child, "settings").AllowUnknown {
+			t.Fatal("context observation did not open a dependency subtree")
+		}
+	})
+
+	t.Run("same path in parent and dependency scopes", func(t *testing.T) {
+		context := union(
+			referenceValue(referenceForScope("child")),
+			referenceValue(referenceForProperties("child")),
+		)
+		a := analyzer{usage: NewUsage()}
+
+		a.observe(context, subtreeContextValue)
+
+		if !requireProperty(t, a.usage, "child").AllowUnknown {
+			t.Fatal("scope boundary was lost when equal paths were combined")
+		}
+	})
+}
+
 func TestDirectFieldsVariablesAndPrefix(t *testing.T) {
 	usage, diagnostics, err := Templates([]Template{{
 		Name:         "parent/charts/child/templates/deployment.yaml",
@@ -599,19 +653,67 @@ func TestTPLFixedAndDynamic(t *testing.T) {
 	})
 
 	t.Run("dynamic", func(t *testing.T) {
-		usage, diagnostics, err := Templates([]Template{{
-			Name:    "templates/output.yaml",
-			Entry:   true,
-			Content: []byte(`{{ tpl .Values.text $ }}`),
-		}})
-		if err != nil {
-			t.Fatal(err)
+		usage := analyzeDynamicTPL(t, `{{ tpl .Values.text $ }}`)
+		if usage.Open || usage.Read || usage.AllowUnknown {
+			t.Error("dynamic tpl opened the values root")
 		}
-		if len(diagnostics) != 1 || !strings.Contains(diagnostics[0].Message, "dynamic tpl") {
-			t.Fatalf("diagnostics = %v", diagnostics)
+		if text := requireProperty(t, usage, "text"); !text.Open {
+			t.Error("dynamic tpl did not open its text source")
 		}
-		if usage.Open || usage.Read || !usage.AllowUnknown {
-			t.Error("dynamic root tpl permitted more than additional root properties")
+	})
+
+	t.Run("values root context", func(t *testing.T) {
+		usage := analyzeDynamicTPL(t, `{{ tpl .Values.text .Values }}`)
+		if usage.AllowUnknown {
+			t.Error(".Values context opened the values root")
+		}
+		if text := requireProperty(t, usage, "text"); !text.Open {
+			t.Error("dynamic tpl did not open its text source")
+		}
+	})
+
+	t.Run("specific context", func(t *testing.T) {
+		usage := analyzeDynamicTPL(t, `{{ tpl .Values.text .Values.settings }}`)
+		if usage.AllowUnknown {
+			t.Error("specific tpl context opened the values root")
+		}
+		settings := requireProperty(t, usage, "settings")
+		if !settings.AllowUnknown || settings.Open {
+			t.Error("specific tpl context did not permit direct properties")
+		}
+	})
+
+	t.Run("ranged text with root context", func(t *testing.T) {
+		usage := analyzeDynamicTPL(t, `{{ range .Values.extraObjects }}{{ tpl . $ }}{{ end }}`)
+		if usage.AllowUnknown {
+			t.Error("ranged tpl opened the values root")
+		}
+		extraObjects := requireProperty(t, usage, "extraObjects")
+		if extraObjects.Elements == nil || !extraObjects.Elements.Open {
+			t.Error("ranged tpl did not open its text items")
+		}
+	})
+
+	t.Run("dependency root context", func(t *testing.T) {
+		usage := analyzeDynamicTPL(t, `{{ tpl .Values.text $ }}`, "child")
+		child := requireProperty(t, usage, "child")
+		if child.AllowUnknown {
+			t.Error("dynamic tpl opened the dependency values root")
+		}
+		if text := requireProperty(t, child, "text"); !text.Open {
+			t.Error("dependency tpl did not open its text source")
+		}
+	})
+
+	t.Run("dependency specific context", func(t *testing.T) {
+		usage := analyzeDynamicTPL(t, `{{ tpl .Values.text .Values.settings }}`, "child")
+		child := requireProperty(t, usage, "child")
+		if child.AllowUnknown {
+			t.Error("dynamic tpl opened the dependency values root")
+		}
+		settings := requireProperty(t, child, "settings")
+		if !settings.AllowUnknown || settings.Open {
+			t.Error("specific dependency tpl context did not permit direct properties")
 		}
 	})
 }
@@ -994,6 +1096,23 @@ func analyzeTemplate(t *testing.T, content string) *Usage {
 	}
 	if len(diagnostics) != 0 {
 		t.Fatalf("unexpected diagnostics: %v", diagnostics)
+	}
+	return usage
+}
+
+func analyzeDynamicTPL(t *testing.T, content string, valuesPrefix ...string) *Usage {
+	t.Helper()
+	usage, diagnostics, err := Templates([]Template{{
+		Name:         "templates/test.yaml",
+		Entry:        true,
+		Content:      []byte(content),
+		ValuesPrefix: valuesPrefix,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diagnostics) != 1 || !strings.Contains(diagnostics[0].Message, "dynamic tpl") {
+		t.Fatalf("diagnostics = %v", diagnostics)
 	}
 	return usage
 }

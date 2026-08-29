@@ -12,6 +12,7 @@ const (
 	exactValue
 	openValue
 	contextValue
+	subtreeContextValue
 	iterateValue
 )
 
@@ -55,7 +56,7 @@ func (u *Usage) record(reference reference, mode observation) {
 	case openValue:
 		current.Read = true
 		current.Open = true
-	case contextValue:
+	case contextValue, subtreeContextValue:
 		current.AllowUnknown = true
 	case iterateValue:
 		current.Iterated = true
@@ -67,9 +68,12 @@ func (a *analyzer) observe(input value, mode observation) {
 	for _, inputAtom := range input.atoms {
 		switch inputAtom.kind {
 		case referenceAtom:
+			if mode == subtreeContextValue && !inputAtom.reference.belowRoot() {
+				continue
+			}
 			a.usage.record(inputAtom.reference, mode)
 		case objectAtom:
-			if mode == openValue || mode == contextValue {
+			if observesDescendants(mode) {
 				for _, field := range inputAtom.fields {
 					a.observe(field, mode)
 				}
@@ -77,11 +81,11 @@ func (a *analyzer) observe(input value, mode observation) {
 			if inputAtom.fallback != nil {
 				a.observe(*inputAtom.fallback, mode)
 			}
-			if inputAtom.dynamic != nil && (mode == openValue || mode == contextValue) {
+			if inputAtom.dynamic != nil && observesDescendants(mode) {
 				a.observe(*inputAtom.dynamic, mode)
 			}
 		case listAtom:
-			if mode == openValue || mode == contextValue {
+			if observesDescendants(mode) {
 				for _, element := range inputAtom.elements {
 					a.observe(element, mode)
 				}
@@ -91,4 +95,10 @@ func (a *analyzer) observe(input value, mode observation) {
 			}
 		}
 	}
+}
+
+// observesDescendants reports whether an observation applies through abstract
+// objects and lists instead of only to directly referenced values.
+func observesDescendants(mode observation) bool {
+	return mode == openValue || mode == contextValue || mode == subtreeContextValue
 }

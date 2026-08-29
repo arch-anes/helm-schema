@@ -11,8 +11,6 @@ import (
 	chartcommon "helm.sh/helm/v4/pkg/chart/common"
 	chartcommonutil "helm.sh/helm/v4/pkg/chart/common/util"
 	chartv2 "helm.sh/helm/v4/pkg/chart/v2"
-	chartv2loader "helm.sh/helm/v4/pkg/chart/v2/loader"
-	chartv2util "helm.sh/helm/v4/pkg/chart/v2/util"
 )
 
 // Validate checks values against one generated schema with Helm's validator.
@@ -22,35 +20,6 @@ func Validate(defaults map[string]any, schemaJSON []byte) error {
 	}
 	if err := chartcommonutil.ValidateAgainstSingleSchema(chartcommon.Values(defaults), schemaJSON); err != nil {
 		return fmt.Errorf("validate chart defaults against generated schema: %w", err)
-	}
-	return nil
-}
-
-// ValidateValues applies Helm's dependency and value-coalescing rules, then
-// validates supplied values against every schema in an unpacked chart tree.
-// It intentionally does not render templates: schema validation must not
-// depend on cluster capabilities or template-time chart assertions.
-func ValidateValues(chartPath string, values map[string]any) error {
-	absolutePath, err := chartDirectory(chartPath)
-	if err != nil {
-		return err
-	}
-	chart, err := chartv2loader.Load(absolutePath)
-	if err != nil {
-		return fmt.Errorf("load chart %q: %w", absolutePath, err)
-	}
-	if values == nil {
-		values = map[string]any{}
-	}
-	if err := chartv2util.ProcessDependencies(chart, chartcommon.Values(values)); err != nil {
-		return fmt.Errorf("process chart dependencies: %w", err)
-	}
-	effective, err := chartcommonutil.CoalesceValues(chart, values)
-	if err != nil {
-		return fmt.Errorf("coalesce chart values: %w", err)
-	}
-	if err := chartcommonutil.ValidateAgainstSchema(chart, effective.AsMap()); err != nil {
-		return fmt.Errorf("values do not match chart schemas: %w", err)
 	}
 	return nil
 }

@@ -194,7 +194,7 @@ func TestGenerateGuardedDynamicEntryAllowsNull(t *testing.T) {
 		},
 	}, nil, &analyze.Usage{Properties: map[string]*analyze.Usage{
 		"ports": {Elements: &analyze.Usage{
-			Read: true,
+			Read:       true,
 			Properties: map[string]*analyze.Usage{"port": {Read: true}},
 		}},
 	}})
@@ -252,6 +252,43 @@ func TestGenerateObjectReadAllowsMembershipChangesOnlyWhenEmpty(t *testing.T) {
 	}
 	if got := property(t, decodeSchema(t, nullOnly), "feature")["additionalProperties"]; got != true {
 		t.Fatalf("a null-only truth-tested object rejects new properties: %#v", got)
+	}
+}
+
+func TestGenerateGuardedObjectWithKnownFieldsStaysClosed(t *testing.T) {
+	t.Parallel()
+
+	usage := &analyze.Usage{Properties: map[string]*analyze.Usage{
+		"probe": {
+			Read: true,
+			Properties: map[string]*analyze.Usage{
+				"enabled": {Read: true},
+				"path":    {Read: true},
+			},
+		},
+	}}
+	for _, test := range []struct {
+		name     string
+		defaults map[string]any
+	}{
+		{name: "missing default", defaults: map[string]any{}},
+		{name: "empty default", defaults: map[string]any{"probe": map[string]any{}}},
+		{name: "null-only default", defaults: map[string]any{"probe": map[string]any{"optional": nil}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			generated, err := Generate(test.defaults, nil, usage)
+			if err != nil {
+				t.Fatal(err)
+			}
+			probe := property(t, decodeSchema(t, generated), "probe")
+			if probe["additionalProperties"] != false {
+				t.Fatalf("guarded object with known fields is open: %#v", probe)
+			}
+			property(t, probe, "enabled")
+			property(t, probe, "path")
+		})
 	}
 }
 

@@ -151,7 +151,7 @@ func scopeFields(scope Scope) map[string]value {
 	for name, immutable := range scope.Context {
 		fields[name] = immutableValue(immutable)
 	}
-	fields["Values"] = referenceValue(referenceForProperties(scope.ValuesPrefix...))
+	fields["Values"] = referenceValue(referenceForScope(scope.ValuesPrefix...))
 	subcharts := make(map[string]value, len(scope.Subcharts))
 	for name, child := range scope.Subcharts {
 		subcharts[name] = scopeValue(child)

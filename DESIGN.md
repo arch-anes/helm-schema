@@ -161,6 +161,12 @@ A literal selector creates evidence for one fixed value path. A dynamic selector
 
 A reachable template must provide the evidence. Comments, dead helpers, and unused dependency defaults do not provide evidence.
 
+A value is also not configurable when template processing supersedes it before
+it affects control flow or rendered output. For example, a library can derive a
+security boolean from a user and group ID, or derive an environment variable
+from a pod security setting. The schema preserves an unchanged default for Helm
+compatibility but rejects a changed override of the superseded field.
+
 If exact analysis is not possible, the analyzer records the location. It either permits a less precise known boundary or stops generation.
 
 ## Generic implementation rules
@@ -338,11 +344,11 @@ The analyzer records `selectedPort` as used. It also records `port` for each dyn
 
 A value used by `if`, `with`, `range`, `and`, `or`, or a comparison can affect template behavior. The analyzer records that use.
 
-A truth test on a map or list can depend on collection membership. The analyzer permits entries or items that can change that result.
+A truth test on a map or list can depend on collection membership. When no field contract exists, the analyzer permits entries or items that can change that result.
 
 A non-empty default map stays closed when a truth test is its only evidence. New properties cannot change its truth result.
 
-An empty map permits new direct properties. A map with only explicit null members is empty because Helm removes those members during value merging.
+An empty map permits new direct properties when the template does not also access specific fields. Structural field usage keeps the object closed so misspelled sibling fields fail. A map with only explicit null members is empty because Helm removes those members during value merging.
 
 The analyzer folds literal conditions and fixed non-value fields when possible. Other branches remain syntactically reachable and contribute usage evidence.
 
@@ -393,7 +399,7 @@ Static field selection does not create complete use. Dynamic entry fields and li
 
 For example, dynamic service selection can permit new service names. Static port-field selection can still reject an unsupported `enablede` field.
 
-Dynamic `tpl` context permits unnamed direct context properties. It does not make declared context properties configurable without separate evidence.
+A specific values subtree used as a dynamic `tpl` context permits unnamed direct properties. The complete values root stays closed. The context does not make declared properties configurable without separate evidence.
 
 Exact use makes the selected value configurable. It keeps object and item boundaries closed unless other evidence opens them.
 
@@ -404,7 +410,8 @@ These rules produce different schemas for different evidence:
 | Static child selection | Rejected | Only used descendants are configurable | Closed |
 | Complete value use | Permitted | Configurable | Open |
 | Dynamic map selection | Permitted through an entry schema | Configurable when selected | Closed by the entry schema |
-| Dynamic `tpl` context | Permitted | Governed by separate evidence | Closed |
+| Specific dynamic `tpl` context | Permitted | Governed by separate evidence | Closed |
+| Root dynamic `tpl` context | Rejected | Governed by separate evidence | Closed |
 | Checksum or other exact use | Rejected | Configurable only as the selected exact value | Closed |
 
 The command reports root precision once for the complete chart tree. This note means that a generated root schema permits names without static references.
@@ -431,11 +438,11 @@ If the text is a fixed chart string, the analyzer parses that string as another 
 
 A literal or immutable chart file is fixed. A default from `values.yaml` can be replaced, but its known text still represents the unchanged chart. The analyzer parses that default only when the corresponding value reaches `tpl`. An unused template-looking default does not create usage evidence.
 
-If the text can change, the analyzer records its source as used. It permits unknown direct properties in the passed template context. It does not recursively open known nested objects.
+If the text can change, the analyzer records its source as open. A specific values subtree used as the context permits unknown direct properties at that boundary.
 
-For example, `tpl .Values.prometheus.prometheusSpec.externalUrl $` permits an arbitrary direct root value. A direct `retentionSize` reference remains statically known.
+The complete root context does not permit arbitrary root values. For example, `tpl .Values.prometheus.prometheusSpec.externalUrl $` keeps the values root closed.
 
-The `prometheusSpec` object stays closed against misspelled sibling names.
+The `prometheusSpec` object also stays closed against misspelled sibling names.
 
 If a dynamic operation has a known context, the analyzer permits unknown direct properties only at that boundary. It does not open the complete root without evidence.
 
@@ -702,7 +709,7 @@ Unit tests cover these cases:
 - Dynamic `tpl` context.
 - Exact references in default text passed to `tpl`.
 - Default template text that never reaches `tpl`.
-- Root properties permitted by dynamic `tpl` without opening known nested objects.
+- Root properties rejected when dynamic `tpl` receives the complete root context.
 - Dynamic root entry names with a strict inferred entry contract.
 - Incompatible scalar examples that do not weaken an object entry contract.
 - Missing defaults.
@@ -710,6 +717,7 @@ Unit tests cover these cases:
 - Null defaults.
 - Unused null defaults.
 - Truth tests on empty, non-empty, and null-only objects.
+- Truth-tested objects with known fields remain closed.
 - Removal of an unused default with a null override.
 - Dotted and hyphenated keys.
 - Object, list, and scalar conflicts.
@@ -738,7 +746,7 @@ The end-to-end suite proves these results:
 8. A dependency alias maps to the correct root path.
 9. A partial dependency override passes both Helm validation phases.
 10. An imported child value maps to its parent destination.
-11. A dynamic root `tpl` call permits an unrelated root key and emits one root-precision note.
+11. A dynamic root `tpl` call rejects an unrelated root key and does not emit a root-precision note.
 12. A known nested object remains closed during dynamic root `tpl` use, so a misspelled `retentionSize` fails lint.
 13. References in default text passed to `tpl` are accepted, while unused default template text provides no evidence.
 14. Dynamic service and port names pass while an unsupported port field such as `enablede` fails.
@@ -792,9 +800,9 @@ Exact static inference is not possible for every Helm template. The analyzer kee
 
 The command prints one note when a generated schema permits root names that templates do not name statically.
 
-A dynamic `tpl` call with the root context permits unknown direct root keys because user-controlled template text can read them. Known nested objects stay closed so that the schema can still reject misspelled keys.
+A dynamic `tpl` call with the root context does not permit unknown root keys. This rule keeps the root schema useful for typo detection.
 
-User-controlled `tpl` text can name a new property inside a known nested object. Static analysis cannot discover that property. The schema rejects it unless another template reference or the chart's default template text provides evidence for it.
+A specific values subtree passed as the `tpl` context permits unknown direct properties in that subtree. Known child objects follow their separate usage evidence.
 
 An unresolved dynamic `include` permits unknown direct properties in its passed context. Known nested properties follow separate usage evidence.
 

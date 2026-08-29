@@ -30,7 +30,8 @@ type segment struct {
 
 // reference identifies a path that starts at the selected chart's values root.
 type reference struct {
-	segments []segment
+	segments  []segment
+	scopeRoot bool
 }
 
 // referenceForProperties creates a reference from literal property names.
@@ -42,11 +43,26 @@ func referenceForProperties(names ...string) reference {
 	return result
 }
 
+// referenceForScope creates a reference to one chart's complete values root.
+// The marker keeps a dependency root distinct from the same path selected in
+// its parent chart.
+func referenceForScope(names ...string) reference {
+	result := referenceForProperties(names...)
+	result.scopeRoot = true
+	return result
+}
+
 // append returns a copied reference with one additional segment.
 func (r reference) append(part segment) reference {
 	segments := slices.Clone(r.segments)
 	segments = append(segments, part)
 	return reference{segments: segments}
+}
+
+// belowRoot reports whether the reference selects a value below its current
+// chart root instead of the complete values object.
+func (r reference) belowRoot() bool {
+	return !r.scopeRoot
 }
 
 // atomKind identifies one possible abstract value representation.
@@ -457,6 +473,9 @@ func atomFingerprint(input atom) string {
 	case referenceAtom:
 		var result strings.Builder
 		result.WriteString("r:")
+		if input.reference.scopeRoot {
+			result.WriteString("root:")
+		}
 		for _, part := range input.reference.segments {
 			switch part.kind {
 			case propertySegment:

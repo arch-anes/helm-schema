@@ -520,8 +520,8 @@ func stringConstants(input value) ([]string, bool) {
 	return result, true
 }
 
-// callTPL parses fixed text. Dynamic text permits additional properties in its
-// context without opening every known nested object.
+// callTPL parses fixed text. Dynamic text opens its source and permits unknown
+// properties in a specific values context, but it does not open the root.
 func (a *analyzer) callTPL(arguments []value, node parse.Node) value {
 	if len(arguments) < 2 {
 		a.addDiagnostic(node, "tpl without text and context could not be analyzed")
@@ -533,8 +533,8 @@ func (a *analyzer) callTPL(arguments []value, node parse.Node) value {
 	texts, fixed := stringConstants(textValue)
 	if !fixed {
 		deferred := a.analyzeDeferredTPLText(textValue, context, node)
-		a.observe(context, contextValue)
-		a.addDiagnostic(node, "dynamic tpl text permits additional properties in its value context")
+		a.observe(context, subtreeContextValue)
+		a.addDiagnostic(node, "dynamic tpl text has references that static analysis cannot identify")
 		return union(deferred, unknownValue())
 	}
 	results := make([]value, 0, len(texts))
@@ -545,8 +545,8 @@ func (a *analyzer) callTPL(arguments []value, node parse.Node) value {
 }
 
 // analyzeDeferredTPLText analyzes chart defaults only when the value that
-// contains the text reaches tpl. User overrides remain dynamic and are handled
-// by the context observation in callTPL.
+// contains the text reaches tpl. User overrides remain dynamic, so callTPL
+// opens their specific values context when one exists.
 func (a *analyzer) analyzeDeferredTPLText(textValue, context value, node parse.Node) value {
 	results := make([]value, 0)
 	for _, textReference := range valueReferences(textValue) {

@@ -1,6 +1,6 @@
 package main
 
-// This file tests command behavior, safe file replacement, schema validation,
+// This file tests command behavior, safe file replacement, generated schemas,
 // and the packaged Helm plugin.
 
 import (
@@ -68,38 +68,6 @@ func TestVersion(t *testing.T) {
 	}
 	if stdout.String() != "helm-schema dev\n" {
 		t.Fatalf("version output = %q", stdout.String())
-	}
-}
-
-func TestValidateChecksGeneratedSchemasWithoutRenderingTemplates(t *testing.T) {
-	chartDirectory := copyBasicChart(t)
-	if err := run([]string{chartDirectory}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
-		t.Fatal(err)
-	}
-
-	var stdout bytes.Buffer
-	valid := "replicaCount: 3\nroute:\n  annotations:\n    generatedAt: 2025-01-01\n"
-	if err := runWithInput(
-		[]string{"validate", chartDirectory},
-		strings.NewReader(valid),
-		&stdout,
-		&bytes.Buffer{},
-	); err != nil {
-		t.Fatalf("validate valid values: %v", err)
-	}
-	if stdout.String() != "values match chart schemas\n" {
-		t.Fatalf("validation output = %q", stdout.String())
-	}
-
-	invalid := "misspelled: true\n"
-	err := runWithInput(
-		[]string{"validate", chartDirectory},
-		strings.NewReader(invalid),
-		&bytes.Buffer{},
-		&bytes.Buffer{},
-	)
-	if err == nil || !strings.Contains(err.Error(), "misspelled") {
-		t.Fatalf("invalid values error = %v", err)
 	}
 }
 
@@ -243,6 +211,32 @@ data:
 	}
 	assertHelmLint(t, chartDirectory, true)
 	assertHelmLint(t, chartDirectory, true, "--set", "dynamic=true")
+}
+
+func TestRunKeepsTruthTestedObjectWithKnownFieldsClosed(t *testing.T) {
+	if _, err := exec.LookPath("helm"); err != nil {
+		t.Skip("helm is not installed")
+	}
+
+	chartDirectory := t.TempDir()
+	writeTestFile(t, chartDirectory, "Chart.yaml", "apiVersion: v2\nname: guarded-object\nversion: 1.0.0\n")
+	writeTestFile(t, chartDirectory, "values.yaml", "probe: {}\n")
+	writeTestFile(t, chartDirectory, "templates/configmap.yaml", `{{- if .Values.probe }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: guarded-object
+data:
+  enabled: {{ .Values.probe.enabled | quote }}
+  path: {{ .Values.probe.path | quote }}
+{{- end }}
+`)
+
+	if err := run([]string{chartDirectory}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	assertHelmLint(t, chartDirectory, true, "--set-string", "probe.path=/")
+	assertHelmLint(t, chartDirectory, false, "--set-string", "probe.paths=/")
 }
 
 func TestRunInfersDynamicRootEntriesWithoutImageSelectorRule(t *testing.T) {
@@ -449,7 +443,7 @@ data:
 	}
 }
 
-func TestRunKeepsKnownObjectsStrictWithDynamicTPL(t *testing.T) {
+func TestRunKeepsRootAndKnownObjectsStrictWithDynamicTPL(t *testing.T) {
 	if _, err := exec.LookPath("helm"); err != nil {
 		t.Skip("helm is not installed")
 	}
@@ -460,11 +454,11 @@ func TestRunKeepsKnownObjectsStrictWithDynamicTPL(t *testing.T) {
 	if err := run([]string{chartDirectory}, &bytes.Buffer{}, &stderr); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stderr.String(), "permits root properties that templates do not name statically") {
-		t.Fatalf("dynamic tpl precision note = %q", stderr.String())
+	if strings.Contains(stderr.String(), "permits root properties that templates do not name statically") {
+		t.Fatalf("dynamic tpl opened root = %q", stderr.String())
 	}
 	assertHelmLint(t, chartDirectory, true)
-	assertHelmLint(t, chartDirectory, true, "--set", "dynamic=value")
+	assertHelmLint(t, chartDirectory, false, "--set", "dynamic=value")
 	assertHelmLint(t, chartDirectory, true, "--set", "prometheus.prometheusSpec.embedded=value")
 	assertHelmLint(t, chartDirectory, false, "--set", "prometheus.prometheusSpec.unusedEmbedded=value")
 	assertHelmLint(t, chartDirectory, false, "--set", "prometheus.prometheusSpec.retentionSiz=1")
