@@ -131,6 +131,7 @@ make test
 ```
 
 The [design document](DESIGN.md) defines the intended behavior and known limits.
+The [formal verification design](FORMAL_VERIFICATION.md) defines the proposed Lean proof boundary.
 
 Dynamic `tpl` text can refer to an unknown property of a specific values context. The generator permits direct properties in that subtree. A root context does not permit unrelated root values. The generator also analyzes default template text when the corresponding value reaches `tpl`.
 
