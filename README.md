@@ -130,8 +130,23 @@ Run all unit, plugin, and Helm lint tests:
 make test
 ```
 
+Run the Lean proofs, axiom audit, executable formal tests, and Go-to-Lean conformance suite:
+
+```sh
+make verify
+```
+
+This command requires `lake` and `rg`. The `formal/lean-toolchain` file selects
+the exact Lean release.
+
+Run both suites:
+
+```sh
+make test-all
+```
+
 The [design document](DESIGN.md) defines the intended behavior and known limits.
-The [formal verification design](FORMAL_VERIFICATION.md) defines the proposed Lean proof boundary.
+The [formal verification document](FORMAL_VERIFICATION.md) explains the implemented Lean proof boundary and its remaining limits.
 
 Dynamic `tpl` text can refer to an unknown property of a specific values context. The generator permits direct properties in that subtree. A root context does not permit unrelated root values. The generator also analyzes default template text when the corresponding value reaches `tpl`.
 
@@ -161,10 +176,17 @@ Each production file has one primary responsibility:
 | `internal/analyze/analyze.go` | Parses template files, creates entry contexts, and starts analysis. |
 | `internal/analyze/eval.go` | Evaluates control flow, variables, pipelines, and named-template output. |
 | `internal/analyze/functions.go` | Defines generic behavior for Helm, Go template, and Sprig functions. |
+| `internal/analyze/function_contracts.go` | Maps every pinned function to one formal operation class. |
 | `internal/analyze/value.go` | Defines abstract values and field, item, and collection selection. |
 | `internal/analyze/usage.go` | Converts abstract value observations into usage-tree evidence. |
 | `internal/analyze/flow.go` | Maps usage through imported and global dependency values. |
 | `internal/schema/schema.go` | Combines defaults and usage evidence into a Draft 7 schema with inferred property rules. |
+| `formal/HelmSchema` | Defines the Lean models, direct contracts, and machine-checked proofs. |
+| `formal/HelmSchema/Flow.lean` | Defines dependency value-flow paths and executable propagation. |
+| `formal/HelmSchema/Proofs/Flow.lean` | Proves prefix, direction, mode, and propagation properties. |
+| `formal/Verify/Main.lean` | Checks the versioned Go-to-Lean conformance protocol. |
+| `formal/Audit/Main.lean` | Rejects unexpected axioms in compiled formal declarations. |
+| `internal/formalconformance/conformance_test.go` | Compares Go, Lean, and Helm 4 semantics at the trusted boundary. |
 | `plugin.yaml` | Defines the Helm 4 `cli/v1` plugin. |
 
 ## Test data

@@ -1,0 +1,25 @@
+name = "HelmSchema"
+version = "0.1.0"
+leanVersion = "v4.33.1"
+testDriver = "formalTests"
+defaultTargets = ["HelmSchema", "formalTests", "verify"]
+
+[[lean_lib]]
+name = "HelmSchema"
+warningsAsErrors = true
+
+[[lean_exe]]
+name = "verify"
+root = "Verify.Main"
+warningsAsErrors = true
+
+[[lean_exe]]
+name = "formalTests"
+root = "Tests.Main"
+warningsAsErrors = true
+
+[[lean_exe]]
+name = "axiomAudit"
+root = "Audit.Main"
+warningsAsErrors = true
+moreLeanArgs = ["--trust=0"]

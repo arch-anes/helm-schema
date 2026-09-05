@@ -32,3 +32,9 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# cache and other artifacts produced by Lean's Lake build tool
+.lake/
+
+# local copies of the Lean manuals used during proof development
+/formal/docs/
