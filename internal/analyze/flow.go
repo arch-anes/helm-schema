@@ -110,14 +110,16 @@ func collectEvidence(usage *Usage) []usageEvidence {
 		if current == nil {
 			return
 		}
-		if current.Open {
-			result = append(result, usageEvidence{reference: reference{segments: slices.Clone(path)}, mode: openValue})
-		} else if current.Read {
+		if current.Read {
 			result = append(result, usageEvidence{reference: reference{segments: slices.Clone(path)}, mode: readValue})
-		} else if current.Exact {
+		}
+		if current.Exact {
 			result = append(result, usageEvidence{reference: reference{segments: slices.Clone(path)}, mode: exactValue})
 		}
-		if current.AllowUnknown && !current.Open {
+		if current.Open {
+			result = append(result, usageEvidence{reference: reference{segments: slices.Clone(path)}, mode: openValue})
+		}
+		if current.AllowUnknown {
 			result = append(result, usageEvidence{reference: reference{segments: slices.Clone(path)}, mode: contextValue})
 		}
 		if current.Iterated {

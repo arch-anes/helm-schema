@@ -13,25 +13,34 @@ import (
 // wholeConsumerFunctions pass complete collection values or entries to their
 // result. Unsupported descendants can therefore affect rendered output.
 var wholeConsumerFunctions = stringSet(
-	"append", "mustAppend", "concat", "mustUniq", "sortAlpha", "uniq", "values",
+	"append", "chunk", "concat", "initial", "mustAppend", "mustChunk",
+	"mustInitial", "mustPrepend", "mustRest", "mustReverse", "mustSlice",
+	"mustUniq", "mustWithout", "pick", "prepend", "rest", "reverse", "slice",
+	"sortAlpha", "uniq", "values", "without",
 )
 
 // exactConsumerFunctions inspect complete scalar representations without
 // establishing valid fields below an object. This includes text produced by a
 // prior toYaml or JSON conversion.
 var exactConsumerFunctions = stringSet(
-	"abbrev", "abbrevboth", "adler32sum", "b32dec", "b32enc", "b64dec", "b64enc",
+	"abbrev", "abbrevboth", "adler32sum", "ago", "b32dec", "b32enc", "b64dec", "b64enc",
+	"base", "bcrypt", "buildCustomCert",
 	"camelcase", "cat", "contains", "date", "dateInZone", "dateModify",
-	"decryptAES", "duration", "durationRound", "encryptAES", "getHostByName",
+	"clean", "date_in_zone", "date_modify", "decryptAES", "derivePassword", "dir",
+	"duration", "durationRound", "encryptAES", "ext", "genCA", "genCAWithKey",
+	"genPrivateKey", "genSelfSignedCertWithKey", "genSignedCert", "genSignedCertWithKey",
+	"getHostByName",
 	"htmlDate", "htmlDateInZone", "initials", "join", "kebabcase", "lower",
-	"mustDateModify", "mustRegexFind", "mustRegexFindAll", "mustRegexMatch",
+	"htpasswd", "isAbs",
+	"mustDateModify", "must_date_modify", "mustRegexFind", "mustRegexFindAll", "mustRegexMatch",
 	"mustRegexReplaceAll", "mustRegexReplaceAllLiteral", "mustRegexSplit",
 	"mustToDate", "nospace", "plural", "regexFind", "regexFindAll",
 	"regexMatch", "regexQuoteMeta", "regexReplaceAll", "regexReplaceAllLiteral",
-	"regexSplit", "repeat", "replace", "sha1sum", "sha256sum", "shuffle",
-	"snakecase", "split", "splitList", "substr", "swapcase", "toDate",
+	"regexSplit", "repeat", "sha1sum", "sha256sum", "shuffle",
+	"osBase", "osClean", "osDir", "osExt", "osIsAbs", "sha512sum", "snakecase",
+	"split", "splitList", "splitn", "substr", "swapcase", "toDate",
 	"toDecimal", "trunc",
-	"upper", "urlJoin", "urlParse", "wrap", "wrapWith",
+	"unixEpoch", "upper", "urlJoin", "urlParse", "wrap", "wrapWith",
 	"genSelfSignedCert", "semver",
 )
 
@@ -42,17 +51,18 @@ var keyConsumerFunctions = stringSet("keys", "len")
 // readConsumerFunctions use an argument value without using its descendants.
 var readConsumerFunctions = stringSet(
 	"add", "add1", "add1f", "addf", "all", "and", "any", "atoi", "biggest",
-	"ceil", "compact", "deepEqual", "div", "divf", "eq", "even", "float64",
+	"ceil", "compact", "deepEqual", "div", "divf", "eq", "float64",
 	"floor", "ge", "gt", "int", "int64", "kindIs", "kindOf", "le", "lt",
 	"max", "maxf", "min", "minf", "mod", "mul", "mulf", "ne", "not",
-	"odd", "or", "randAlpha", "randAlphaNum", "randAscii", "randBytes",
+	"or", "randAlpha", "randAlphaNum", "randAscii", "randBytes",
 	"randInt", "randNumeric", "round", "semverCompare", "sub", "subf",
-	"typeIs", "typeIsLike", "typeOf", "fail", "has", "mustHas", "hasPrefix", "hasSuffix",
+	"typeIs", "typeIsLike", "typeOf", "fail", "has", "mustCompact", "mustHas",
+	"hasPrefix", "hasSuffix", "seq", "until", "untilStep",
 )
 
 // harmlessFunctions return values without consuming chart-value arguments.
 var harmlessFunctions = stringSet(
-	"now", "uuidv4",
+	"hello", "now", "uuidv4",
 )
 
 // originPreservingFunctions transform a value without choosing fields from it.
@@ -60,11 +70,12 @@ var harmlessFunctions = stringSet(
 // input creates.
 var originPreservingFunctions = stringSet(
 	"fromJson", "fromJsonArray", "fromYaml", "fromYamlArray",
-	"indent", "nindent", "quote", "squote",
+	"fromToml", "html", "indent", "js", "nindent", "quote", "squote",
 	"mustFromJson", "mustToJson", "mustToPrettyJson", "mustToRawJson",
 	"mustToToml", "mustToYaml", "toJson", "toPrettyJson", "toRawJson",
 	"toString", "toStrings", "toToml", "toYaml", "toYamlPretty", "replace",
-	"trim", "trimAll", "trimPrefix", "trimSuffix",
+	"title", "trim", "trimAll", "trimPrefix", "trimSuffix", "trimall", "untitle",
+	"urlquery",
 )
 
 // stringSet creates a lookup set for a function behavior class.
@@ -185,6 +196,15 @@ func (a *analyzer) callFunction(name string, arguments []value, node parse.Node)
 		return unknownValue()
 	}
 	if _, exists := harmlessFunctions[name]; exists {
+		return unknownValue()
+	}
+	if _, exists := knownConservativeFunctions[name]; exists {
+		for _, argument := range arguments {
+			a.observe(argument, openValue)
+		}
+		a.addDiagnostic(node, fmt.Sprintf(
+			"function %q uses conservative complete-value analysis", name,
+		))
 		return unknownValue()
 	}
 

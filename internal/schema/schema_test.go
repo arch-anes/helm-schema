@@ -215,6 +215,9 @@ func TestGenerateGuardedDynamicEntryAllowsNull(t *testing.T) {
 
 func TestGenerateObjectReadAllowsMembershipChangesOnlyWhenEmpty(t *testing.T) {
 	t.Parallel()
+	var typedNilMap map[string]any
+	var typedNilSlice []any
+	var typedNilPointer *string
 
 	got, err := Generate(map[string]any{
 		"feature": map[string]any{"fixed": "unchanged"},
@@ -252,6 +255,27 @@ func TestGenerateObjectReadAllowsMembershipChangesOnlyWhenEmpty(t *testing.T) {
 	}
 	if got := property(t, decodeSchema(t, nullOnly), "feature")["additionalProperties"]; got != true {
 		t.Fatalf("a null-only truth-tested object rejects new properties: %#v", got)
+	}
+
+	for name, value := range map[string]any{
+		"typed nil map":     typedNilMap,
+		"typed nil slice":   typedNilSlice,
+		"typed nil pointer": typedNilPointer,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			generated, err := Generate(map[string]any{
+				"feature": map[string]any{"optional": value},
+			}, nil, &analyze.Usage{Properties: map[string]*analyze.Usage{
+				"feature": {Read: true},
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := property(t, decodeSchema(t, generated), "feature")["additionalProperties"]; got != true {
+				t.Fatalf("a typed-null-only truth-tested object rejects new properties: %#v", got)
+			}
+		})
 	}
 }
 
@@ -762,6 +786,105 @@ func TestGenerateUsesAlternativesForShapeConflict(t *testing.T) {
 	object := alternatives[1].(map[string]any)
 	if object["type"] != "object" || property(t, object, "child") == nil {
 		t.Fatalf("object alternative = %#v", object)
+	}
+}
+
+func TestShapeAlternativesDoNotInferTypeFromTemplateStrings(t *testing.T) {
+	t.Parallel()
+
+	type templateString string
+	defaultValue := templateString("{{ .Values.enabled }}")
+	got, err := Generate(map[string]any{"value": &defaultValue}, nil, &analyze.Usage{
+		Properties: map[string]*analyze.Usage{
+			"value": {
+				Read: true,
+				Properties: map[string]*analyze.Usage{
+					"child": {Read: true},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	value := property(t, decodeSchema(t, got), "value")
+	alternatives, ok := value["anyOf"].([]any)
+	if !ok || len(alternatives) != 2 {
+		t.Fatalf("shape alternatives = %#v", value["anyOf"])
+	}
+	if scalar := alternatives[0].(map[string]any); scalar["type"] != nil {
+		t.Fatalf("template string supplied scalar type evidence: %#v", scalar)
+	}
+}
+
+func TestElementAlternativesDoNotInferTypeFromTemplateStrings(t *testing.T) {
+	t.Parallel()
+
+	got, err := Generate(map[string]any{
+		"value": "{{ .Values.enabled }}",
+	}, nil, &analyze.Usage{Properties: map[string]*analyze.Usage{
+		"value": {
+			Open:     true,
+			Iterated: true,
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	value := property(t, decodeSchema(t, got), "value")
+	alternatives, ok := value["anyOf"].([]any)
+	if !ok || len(alternatives) != 3 {
+		t.Fatalf("element alternatives = %#v", value["anyOf"])
+	}
+	if scalar := alternatives[0].(map[string]any); scalar["type"] != nil {
+		t.Fatalf("template string supplied element scalar type evidence: %#v", scalar)
+	}
+}
+
+func TestConflictingDynamicExamplesKeepTheirContracts(t *testing.T) {
+	t.Parallel()
+
+	got, err := Generate(map[string]any{
+		"services": map[string]any{
+			"numeric":     map[string]any{"port": 8080},
+			"numericCopy": map[string]any{"port": 9090},
+			"named":       map[string]any{"port": "http"},
+		},
+	}, nil, &analyze.Usage{Properties: map[string]*analyze.Usage{
+		"services": {Additional: &analyze.Usage{
+			Properties: map[string]*analyze.Usage{"port": {Read: true}},
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	services := property(t, decodeSchema(t, got), "services")
+	additional, ok := services["additionalProperties"].(map[string]any)
+	if !ok {
+		t.Fatalf("dynamic entry contract is missing: %#v", services)
+	}
+	alternatives, ok := additional["anyOf"].([]any)
+	if !ok || len(alternatives) != 2 {
+		t.Fatalf("conflicting examples became unrestricted: %#v", additional)
+	}
+
+	portTypes := make(map[string]bool)
+	for _, alternative := range alternatives {
+		entry, ok := alternative.(map[string]any)
+		if !ok || entry["type"] != "object" || entry["additionalProperties"] != false {
+			t.Fatalf("dynamic entry alternative is not a closed object: %#v", alternative)
+		}
+		portType, ok := property(t, entry, "port")["type"].(string)
+		if !ok {
+			t.Fatalf("dynamic port type is missing: %#v", alternative)
+		}
+		portTypes[portType] = true
+	}
+	if len(portTypes) != 2 || !portTypes["integer"] || !portTypes["string"] {
+		t.Fatalf("dynamic port alternatives = %#v", portTypes)
 	}
 }
 

@@ -343,8 +343,10 @@ func (b *builder) buildValue(value any, exists bool, usage *analyze.Usage, point
 		if wantsArray {
 			return nil, pathError(pointer, "default is a scalar but template usage requires an array", nil)
 		}
-		if text, templated := value.(string); (!inheritedOpen || directUsage) && (!templated || !strings.Contains(text, "{{")) {
-			result.Type = inferScalarType(value)
+		if !inheritedOpen || directUsage {
+			if scalarType := scalarTypeEvidence(value); scalarType != "" {
+				result.Type = scalarType
+			}
 		}
 		if configurable(usage, used) {
 			defaultValue, err := rawValue(value)
@@ -431,7 +433,7 @@ func (b *builder) buildElementAlternatives(
 	}
 	if exists && kind != kindObject {
 		if kind == kindScalar && usage.Open {
-			alternatives = append(alternatives, &document{Type: inferScalarType(value)})
+			alternatives = append(alternatives, scalarEvidenceDocument(value))
 		} else {
 			original, err := rawValue(value)
 			if err != nil {
@@ -570,7 +572,7 @@ func defaultShapeSchema(value any, kind inspectedKind, configurable bool) (*docu
 		case kindArray:
 			return &document{Type: "array", Items: &document{}}, nil
 		case kindScalar:
-			return &document{Type: inferScalarType(value)}, nil
+			return scalarEvidenceDocument(value), nil
 		}
 	}
 	constant, err := rawValue(value)
@@ -690,10 +692,12 @@ func allowsUnnamedProperties(defaults map[string]any, usage *analyze.Usage, open
 }
 
 // defaultObjectIsEmpty reports whether Helm removes every direct default
-// member during value coalescing. Helm removes explicit null map members.
+// member during value coalescing. The JSON-null forms include typed nil
+// pointers, maps, and slices stored in an interface.
 func defaultObjectIsEmpty(defaults map[string]any) bool {
 	for _, value := range defaults {
-		if value != nil {
+		kind, _, _, err := inspectValue(value, true)
+		if err != nil || kind != kindNull {
 			return false
 		}
 	}
@@ -735,8 +739,11 @@ func (b *builder) buildUniformSchema(examples []any, usage *analyze.Usage, point
 		}
 		merged, compatible := mergeInferredDocuments(uniform, candidate)
 		if !compatible {
-			// Heterogeneous examples do not prove one safe item contract.
-			return &document{}, nil
+			// Conflicting examples prove alternatives, not an unrestricted
+			// contract. Preserve each supported shape so unrelated values still
+			// fail validation.
+			uniform = joinInferredAlternatives(uniform, candidate)
+			continue
 		}
 		uniform = merged
 	}
@@ -749,6 +756,33 @@ func (b *builder) buildUniformSchema(examples []any, usage *analyze.Usage, point
 		permitNull(uniform)
 	}
 	return uniform, nil
+}
+
+// joinInferredAlternatives returns the union of incompatible example
+// contracts. It flattens unions created by earlier examples and removes exact
+// duplicates, which keeps generated schemas stable and readable.
+func joinInferredAlternatives(left, right *document) *document {
+	alternatives := make([]*document, 0, 4)
+	appendAlternative := func(candidate *document) {
+		for _, existing := range alternatives {
+			if reflect.DeepEqual(existing, candidate) {
+				return
+			}
+		}
+		alternatives = append(alternatives, candidate)
+	}
+	for _, candidate := range []*document{left, right} {
+		if candidate != nil && candidate.Type == nil && candidate.Const == nil &&
+			candidate.Properties == nil && candidate.Items == nil &&
+			candidate.AdditionalProperties == nil && len(candidate.AnyOf) > 0 {
+			for _, alternative := range candidate.AnyOf {
+				appendAlternative(alternative)
+			}
+			continue
+		}
+		appendAlternative(candidate)
+	}
+	return &document{AnyOf: alternatives}
 }
 
 // mergeInferredDocuments combines type evidence from two default examples.
@@ -1114,6 +1148,38 @@ func inferScalarType(value any) string {
 	default:
 		return ""
 	}
+}
+
+// scalarTypeEvidence returns a scalar type only when the default supplies
+// stable override evidence. A string containing a template marker can render
+// a value of another JSON type, so it does not prove the string type. The
+// reflection walk applies the same rule to aliases and pointers.
+func scalarTypeEvidence(value any) string {
+	if value == nil {
+		return ""
+	}
+	rv := reflect.ValueOf(value)
+	for rv.Kind() == reflect.Interface || rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return ""
+		}
+		rv = rv.Elem()
+	}
+	if rv.Kind() == reflect.String && strings.Contains(rv.String(), "{{") {
+		return ""
+	}
+	return inferScalarType(value)
+}
+
+// scalarEvidenceDocument creates an unrestricted document when no stable
+// scalar type evidence exists. Assigning an empty string to the interface
+// field would otherwise emit the invalid JSON Schema form `"type":""`.
+func scalarEvidenceDocument(value any) *document {
+	result := &document{}
+	if scalarType := scalarTypeEvidence(value); scalarType != "" {
+		result.Type = scalarType
+	}
+	return result
 }
 
 // rawValue encodes a default or constant with the standard JSON encoder.

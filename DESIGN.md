@@ -1,6 +1,6 @@
 # Template-aware Helm schema generator
 
-Status: Implemented foundation for the first version. The known precision limits still apply.
+Status: Implemented for the first release scope. The known precision limits still apply.
 
 ## Purpose
 

@@ -62,3 +62,22 @@ func TestApplyValueFlowsHandlesCycles(t *testing.T) {
 		t.Fatalf("cycle did not propagate usage: %#v", usage)
 	}
 }
+
+func TestApplyValueFlowsPreservesEveryUsageMode(t *testing.T) {
+	usage := NewUsage()
+	usage.Properties["source"] = &Usage{
+		Read: true, Exact: true, AllowUnknown: true, Open: true, Iterated: true,
+	}
+	flows := []ValueFlow{{
+		Source: []string{"source"}, Destination: []string{"destination"},
+	}}
+
+	if err := ApplyValueFlows(usage, flows); err != nil {
+		t.Fatal(err)
+	}
+	destination := usage.Properties["destination"]
+	if destination == nil || !destination.Read || !destination.Exact ||
+		!destination.AllowUnknown || !destination.Open || !destination.Iterated {
+		t.Fatalf("flow destination usage = %#v", destination)
+	}
+}
