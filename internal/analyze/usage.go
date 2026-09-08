@@ -11,6 +11,7 @@ const (
 	readValue observation = iota
 	exactValue
 	openValue
+	serializedValue
 	contextValue
 	subtreeContextValue
 	iterateValue
@@ -56,6 +57,8 @@ func (u *Usage) record(reference reference, mode observation) {
 	case openValue:
 		current.Read = true
 		current.Open = true
+	case serializedValue:
+		current.Serialized = true
 	case contextValue, subtreeContextValue:
 		current.AllowUnknown = true
 	case iterateValue:
@@ -66,6 +69,11 @@ func (u *Usage) record(reference reference, mode observation) {
 // observe applies an observation to every value origin in an abstract value.
 func (a *analyzer) observe(input value, mode observation) {
 	for _, inputAtom := range input.atoms {
+		if inputAtom.serialized && mode != serializedValue {
+			serializedAtom := inputAtom
+			serializedAtom.serialized = false
+			a.observe(value{atoms: []atom{serializedAtom}}, serializedValue)
+		}
 		switch inputAtom.kind {
 		case referenceAtom:
 			if mode == subtreeContextValue && !inputAtom.reference.belowRoot() {
@@ -100,5 +108,5 @@ func (a *analyzer) observe(input value, mode observation) {
 // observesDescendants reports whether an observation applies through abstract
 // objects and lists instead of only to directly referenced values.
 func observesDescendants(mode observation) bool {
-	return mode == openValue || mode == contextValue || mode == subtreeContextValue
+	return mode == openValue || mode == serializedValue || mode == contextValue || mode == subtreeContextValue
 }

@@ -78,12 +78,14 @@ func (d Diagnostic) String() string {
 // output without making unsupported descendants valid. AllowUnknown means new
 // direct properties can affect the result. Open means that an operation
 // consumes the complete selected value. Structural evidence below that value
-// also consumes all descendants below that value.
+// also consumes all descendants below that value. Serialized means the complete
+// value is converted without requiring a particular JSON shape.
 type Usage struct {
 	Read         bool
 	Exact        bool
 	AllowUnknown bool
 	Open         bool
+	Serialized   bool
 	Iterated     bool
 	Properties   map[string]*Usage
 	Additional   *Usage
@@ -98,7 +100,7 @@ func NewUsage() *Usage {
 
 // Empty reports whether a node contains no usage evidence.
 func (u *Usage) Empty() bool {
-	return u == nil || (!u.Read && !u.Exact && !u.AllowUnknown && !u.Open && !u.Iterated && len(u.Properties) == 0 && u.Additional == nil && u.Items == nil && u.Elements == nil)
+	return u == nil || (!u.Read && !u.Exact && !u.AllowUnknown && !u.Open && !u.Serialized && !u.Iterated && len(u.Properties) == 0 && u.Additional == nil && u.Items == nil && u.Elements == nil)
 }
 
 // Merge adds all evidence from other to u. Merge is monotonic: it never clears
@@ -111,6 +113,7 @@ func (u *Usage) Merge(other *Usage) {
 	u.Exact = u.Exact || other.Exact
 	u.AllowUnknown = u.AllowUnknown || other.AllowUnknown
 	u.Open = u.Open || other.Open
+	u.Serialized = u.Serialized || other.Serialized
 	u.Iterated = u.Iterated || other.Iterated
 	if u.Properties == nil {
 		u.Properties = make(map[string]*Usage)

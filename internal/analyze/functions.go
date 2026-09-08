@@ -72,11 +72,15 @@ var originPreservingFunctions = stringSet(
 	"fromJson", "fromJsonArray", "fromYaml", "fromYamlArray",
 	"fromToml", "html", "indent", "js", "nindent", "quote", "squote",
 	"mustFromJson", "mustToJson", "mustToPrettyJson", "mustToRawJson",
-	"mustToToml", "mustToYaml", "toJson", "toPrettyJson", "toRawJson",
-	"toString", "toStrings", "toToml", "toYaml", "toYamlPretty", "replace",
+	"mustToToml", "toJson", "toPrettyJson", "toRawJson",
+	"toString", "toStrings", "toToml", "replace",
 	"title", "trim", "trimAll", "trimPrefix", "trimSuffix", "trimall", "untitle",
 	"urlquery",
 )
+
+// yamlSerializationFunctions accept maps, arrays, scalars, and null. Their
+// output therefore consumes the complete input without requiring an object.
+var yamlSerializationFunctions = stringSet("mustToYaml", "toYaml", "toYamlPretty")
 
 // stringSet creates a lookup set for a function behavior class.
 func stringSet(names ...string) map[string]struct{} {
@@ -165,6 +169,9 @@ func (a *analyzer) callFunction(name string, arguments []value, node parse.Node)
 		return unknownValue()
 	}
 
+	if _, exists := yamlSerializationFunctions[name]; exists {
+		return serializeValue(union(arguments...))
+	}
 	if _, exists := originPreservingFunctions[name]; exists {
 		return union(arguments...)
 	}

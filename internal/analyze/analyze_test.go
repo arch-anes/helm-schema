@@ -16,6 +16,7 @@ func TestUsageMergeIsMonotonic(t *testing.T) {
 	}
 	right := NewUsage()
 	right.Open = true
+	right.Serialized = true
 	right.Iterated = true
 	right.Properties["image"] = &Usage{
 		Exact:        true,
@@ -29,8 +30,8 @@ func TestUsageMergeIsMonotonic(t *testing.T) {
 
 	left.Merge(right)
 
-	if !left.Open || !left.Iterated {
-		t.Fatalf("root flags = Open %v, Iterated %v", left.Open, left.Iterated)
+	if !left.Open || !left.Serialized || !left.Iterated {
+		t.Fatalf("root flags = Open %v, Serialized %v, Iterated %v", left.Open, left.Serialized, left.Iterated)
 	}
 	image := requireProperty(t, left, "image")
 	if !image.Read || !image.Exact || !image.AllowUnknown || !image.Open {
@@ -571,6 +572,26 @@ func TestWholeConsumer(t *testing.T) {
 	}
 }
 
+func TestToYamlAcceptsEveryValueShape(t *testing.T) {
+	for _, function := range []string{"toYaml", "toYamlPretty", "mustToYaml"} {
+		t.Run(function, func(t *testing.T) {
+			usage := analyzeTemplate(t, `{{ .Values.payload | `+function+` | nindent 2 }}`)
+			payload := requireProperty(t, usage, "payload")
+			if !payload.Read || !payload.Open || !payload.Serialized {
+				t.Fatalf("payload usage = %#v", payload)
+			}
+		})
+	}
+}
+
+func TestDirectOutputDoesNotImplySerialization(t *testing.T) {
+	usage := analyzeTemplate(t, `{{ .Values.payload }}`)
+	payload := requireProperty(t, usage, "payload")
+	if payload.Serialized {
+		t.Fatalf("direct output was marked as serialized: %#v", payload)
+	}
+}
+
 func TestChecksumUsesExactValueWithoutOpeningObject(t *testing.T) {
 	usage := analyzeTemplate(t, `checksum: {{ printf "%s" (.Values.service | toJson | quote) | sha256sum }}`)
 	service := requireProperty(t, usage, "service")
@@ -581,7 +602,7 @@ func TestChecksumUsesExactValueWithoutOpeningObject(t *testing.T) {
 
 func TestInspectionOfSerializedObjectDoesNotValidateUnknownFields(t *testing.T) {
 	usage := analyzeTemplate(t, `{{- $serialized := toYaml .Values -}}{{ contains "error" $serialized }}`)
-	if !usage.Exact || usage.Open || usage.AllowUnknown {
+	if !usage.Exact || !usage.Serialized || usage.Open || usage.AllowUnknown {
 		t.Fatalf("serialized inspection usage = %#v", usage)
 	}
 }

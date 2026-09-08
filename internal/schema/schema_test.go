@@ -117,6 +117,40 @@ func TestGenerateOpenObject(t *testing.T) {
 	}
 }
 
+func TestGenerateSerializedValueDoesNotRequireObjectShape(t *testing.T) {
+	t.Parallel()
+
+	defaults := []any{
+		map[string]any{"name": "example"},
+		[]any{"one", "two"},
+		"text",
+		3,
+		true,
+		nil,
+	}
+	for _, defaultValue := range defaults {
+		got, err := Generate(map[string]any{"payload": defaultValue}, nil, &analyze.Usage{
+			Properties: map[string]*analyze.Usage{
+				"payload": {Read: true, Open: true, Serialized: true},
+			},
+		})
+		if err != nil {
+			t.Fatalf("default %#v: %v", defaultValue, err)
+		}
+
+		payload := property(t, decodeSchema(t, got), "payload")
+		if _, found := payload["type"]; found {
+			t.Fatalf("default %#v fixed the serialized type: %#v", defaultValue, payload)
+		}
+		if _, found := payload["const"]; found {
+			t.Fatalf("default %#v fixed the serialized value: %#v", defaultValue, payload)
+		}
+		if _, found := payload["default"]; !found {
+			t.Fatalf("default %#v was omitted: %#v", defaultValue, payload)
+		}
+	}
+}
+
 func TestGenerateOpenParentOpensKnownChildContract(t *testing.T) {
 	t.Parallel()
 

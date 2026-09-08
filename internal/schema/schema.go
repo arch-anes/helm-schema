@@ -228,6 +228,18 @@ func (b *builder) buildValue(value any, exists bool, usage *analyze.Usage, point
 	if err != nil {
 		return nil, pathError(pointer, "invalid default", err)
 	}
+	// YAML serialization accepts objects, arrays, scalars, and null. With no
+	// separate structural use, the default does not provide a type contract.
+	if usage.Serialized && !wantsObject && !wantsArray && !hasElements {
+		if exists && configurable(usage, used) {
+			defaultValue, err := rawValue(value)
+			if err != nil {
+				return nil, pathError(pointer, "default cannot be represented as JSON", err)
+			}
+			result.Default = defaultValue
+		}
+		return result, nil
+	}
 	// Complete use of a value with no default provides no type evidence. It
 	// can validly be a scalar, object, array, or null.
 	if kind == kindMissing && open {
@@ -1052,7 +1064,7 @@ func replacementElementUsage(usage *analyze.Usage) *analyze.Usage {
 
 // configurable reports whether one node can differ from its default.
 func configurable(usage *analyze.Usage, inheritedUsed bool) bool {
-	return inheritedUsed || usage.Read || usage.Exact || usage.AllowUnknown || usage.Open || usage.Iterated
+	return inheritedUsed || usage.Read || usage.Exact || usage.AllowUnknown || usage.Open || usage.Serialized || usage.Iterated
 }
 
 // inspectedKind identifies the JSON shape of one Go value.

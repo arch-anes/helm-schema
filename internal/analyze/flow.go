@@ -119,6 +119,9 @@ func collectEvidence(usage *Usage) []usageEvidence {
 		if current.Open {
 			result = append(result, usageEvidence{reference: reference{segments: slices.Clone(path)}, mode: openValue})
 		}
+		if current.Serialized {
+			result = append(result, usageEvidence{reference: reference{segments: slices.Clone(path)}, mode: serializedValue})
+		}
 		if current.AllowUnknown {
 			result = append(result, usageEvidence{reference: reference{segments: slices.Clone(path)}, mode: contextValue})
 		}

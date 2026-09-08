@@ -393,6 +393,30 @@ func TestRunAcceptsExplicitNullDefault(t *testing.T) {
 	assertHelmLint(t, chartDirectory, true)
 }
 
+func TestRunAllowsArrayOverrideForToYamlValue(t *testing.T) {
+	if _, err := exec.LookPath("helm"); err != nil {
+		t.Skip("helm is not installed")
+	}
+
+	chartDirectory := t.TempDir()
+	writeTestFile(t, chartDirectory, "Chart.yaml", "apiVersion: v2\nname: serialized\nversion: 1.0.0\n")
+	writeTestFile(t, chartDirectory, "values.yaml", "payload: {}\n")
+	writeTestFile(t, chartDirectory, "templates/configmap.yaml", `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: serialized
+data:
+  payload: |
+    {{- toYaml .Values.payload | nindent 4 }}
+`)
+
+	if err := run([]string{chartDirectory}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	assertHelmLint(t, chartDirectory, true, "--set-json", `payload=["one","two"]`)
+	assertHelmLint(t, chartDirectory, true, "--set-json", "payload=3")
+}
+
 func TestRunAcceptsUnusedObjectWhoseChildrenAreNull(t *testing.T) {
 	if _, err := exec.LookPath("helm"); err != nil {
 		t.Skip("helm is not installed")

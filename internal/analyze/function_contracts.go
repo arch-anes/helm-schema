@@ -45,6 +45,7 @@ var functionOperationGroups = []struct {
 }{
 	{functionSemanticTransfer, specialFunctionOperations},
 	{functionOriginPreserving, originPreservingFunctions},
+	{functionOriginPreserving, yamlSerializationFunctions},
 	{functionExactConsumer, exactConsumerFunctions},
 	{functionKeyConsumer, keyConsumerFunctions},
 	{functionCompleteConsumer, wholeConsumerFunctions},

@@ -770,7 +770,7 @@ Development acceptance uses charts with these patterns:
 
 - A declared default that templates never use.
 - A dynamically indexed map with arbitrary entry names.
-- A whole object passed to `toYaml`.
+- A whole value passed to `toYaml`; maps, arrays, scalars, and null are valid.
 - A value path that templates use but defaults omit.
 - A dynamic `tpl` value beside a strict `retentionSize` field, as used by kube-prometheus-stack 88.2.0.
 - Dynamic service and port maps behind a library chart, as used by OctoPrint with TrueCharts common 29.7.1.

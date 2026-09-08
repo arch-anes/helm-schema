@@ -79,15 +79,25 @@ const (
 
 // atom stores one possible constant, origin, object, or list representation.
 type atom struct {
-	kind      atomKind
-	constant  any
-	reference reference
-	fields    map[string]value
-	fallback  *value
-	dynamic   *value
-	excluded  map[string]bool
-	elements  []value
-	item      *value
+	kind       atomKind
+	serialized bool
+	constant   any
+	reference  reference
+	fields     map[string]value
+	fallback   *value
+	dynamic    *value
+	excluded   map[string]bool
+	elements   []value
+	item       *value
+}
+
+// serializedValue marks a conversion that accepts every JSON-compatible value
+// shape. Later string transforms retain this marker until output consumes it.
+func serializeValue(input value) value {
+	for index := range input.atoms {
+		input.atoms[index].serialized = true
+	}
+	return input
 }
 
 // value stores every abstract alternative that an expression can produce.
@@ -465,14 +475,18 @@ func valueFingerprint(input value) string {
 
 // atomFingerprint returns a stable structural identity for one atom.
 func atomFingerprint(input atom) string {
+	prefix := ""
+	if input.serialized {
+		prefix = "serialized:"
+	}
 	switch input.kind {
 	case unknownAtom:
-		return "?"
+		return prefix + "?"
 	case constantAtom:
-		return "c:" + fmt.Sprintf("%T:%v", input.constant, input.constant)
+		return prefix + "c:" + fmt.Sprintf("%T:%v", input.constant, input.constant)
 	case referenceAtom:
 		var result strings.Builder
-		result.WriteString("r:")
+		result.WriteString(prefix + "r:")
 		if input.reference.scopeRoot {
 			result.WriteString("root:")
 		}
@@ -493,7 +507,7 @@ func atomFingerprint(input atom) string {
 	case objectAtom:
 		names := slices.Sorted(maps.Keys(input.fields))
 		var result strings.Builder
-		result.WriteString("o:{")
+		result.WriteString(prefix + "o:{")
 		for _, name := range names {
 			result.WriteString(strconv.Quote(name))
 			result.WriteString(":")
@@ -517,7 +531,7 @@ func atomFingerprint(input atom) string {
 		return result.String()
 	case listAtom:
 		var result strings.Builder
-		result.WriteString("l:[")
+		result.WriteString(prefix + "l:[")
 		for _, element := range input.elements {
 			result.WriteString(valueFingerprint(element))
 			result.WriteString(",")
