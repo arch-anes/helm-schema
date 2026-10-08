@@ -6,6 +6,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -54,7 +55,7 @@ func TestHelp(t *testing.T) {
 	if err := run([]string{"--help"}, &stdout, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte("helm schema [CHART]")) {
+	if !bytes.Contains(stdout.Bytes(), []byte("helm schema [--check] [CHART]")) {
 		t.Fatalf("help output = %q", stdout.String())
 	}
 }
@@ -557,6 +558,57 @@ func TestRunLeavesExistingSchemaAfterAnalysisError(t *testing.T) {
 	}
 	if !bytes.Equal(content, sentinel) {
 		t.Fatalf("existing schema changed to %q", content)
+	}
+}
+
+func TestCheckAcceptsCurrentSchema(t *testing.T) {
+	chartDirectory := copyBasicChart(t)
+	if err := run([]string{chartDirectory}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	if err := run([]string{"--check", chartDirectory}, &stdout, &bytes.Buffer{}); err != nil {
+		t.Fatalf("check rejected a current schema: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "is up to date") {
+		t.Fatalf("check output = %q", stdout.String())
+	}
+}
+
+func TestCheckRejectsStaleSchemaWithoutWriting(t *testing.T) {
+	chartDirectory := copyBasicChart(t)
+	schemaPath := filepath.Join(chartDirectory, "values.schema.json")
+	sentinel := []byte("{}\n")
+	if err := os.WriteFile(schemaPath, sentinel, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	if err := run([]string{"--check", chartDirectory}, &stdout, &bytes.Buffer{}); err == nil {
+		t.Fatal("check accepted a stale schema")
+	}
+	if !strings.Contains(stdout.String(), schemaPath+" is out of date") {
+		t.Fatalf("check output = %q", stdout.String())
+	}
+	content, err := os.ReadFile(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(content, sentinel) {
+		t.Fatalf("check changed the schema to %q", content)
+	}
+}
+
+func TestCheckRejectsMissingSchemaWithoutWriting(t *testing.T) {
+	chartDirectory := copyBasicChart(t)
+	schemaPath := filepath.Join(chartDirectory, "values.schema.json")
+
+	if err := run([]string{"--check", chartDirectory}, &bytes.Buffer{}, &bytes.Buffer{}); err == nil {
+		t.Fatal("check accepted a missing schema")
+	}
+	if _, err := os.Stat(schemaPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("check created a schema file: %v", err)
 	}
 }
 

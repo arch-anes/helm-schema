@@ -89,6 +89,16 @@ cd ./path/to/chart
 /path/to/helm-schema
 ```
 
+Check that committed schemas are current without writing them, for example in CI:
+
+```sh
+bin/helm-schema --check ./path/to/chart
+```
+
+The command exits with status 0 when every schema file in the chart tree matches
+the generated output. It exits with status 1 and lists each file that differs or is missing.
+A generation error also exits with status 1. Put `--check` before the chart path.
+
 Generation uses only local chart files. It does not download dependencies or contact a Kubernetes cluster.
 
 Generation validates each schema against the chart's effective defaults. Run

@@ -1,11 +1,11 @@
 apiVersion: v1
 type: cli/v1
 name: schema
-version: 0.1.0
+version: 0.1.1
 runtime: subprocess
 sourceURL: https://github.com/arch-anes/helm-schema
 config:
-  usage: schema [CHART]
+  usage: schema [--check] [CHART]
   shortHelp: Generate values.schema.json files
   longHelp: Generate schemas from Helm template usage.
   ignoreFlags: false

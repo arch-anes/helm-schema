@@ -46,12 +46,14 @@ The first version does not provide these features:
 The command accepts zero or one positional argument:
 
 ```text
-helm-schema [CHART]
+helm-schema [--check] [CHART]
 ```
 
 `CHART` defaults to the current directory. The command writes `values.schema.json` in the chart directory.
 
-The command has no generation flags. Standard `--help` and `--version` flags are permitted.
+The `--check` flag generates and validates every schema but writes nothing. It compares each generated schema byte-for-byte with the file on disk. The command exits with status 0 when every file matches and status 1 when any file differs or is missing. It lists each file that differs. Standard `--help` and `--version` flags are also permitted.
+
+Flags must come before `CHART`.
 
 The command uses Go's standard `flag` package. The interface has one optional path and no subcommands, so it does not need a command framework.
 
@@ -85,11 +87,11 @@ The repository contains this Helm 4 plugin contract:
 apiVersion: v1
 type: cli/v1
 name: schema
-version: 0.1.0
+version: 0.1.1
 runtime: subprocess
 sourceURL: https://github.com/arch-anes/helm-schema
 config:
-  usage: schema [CHART]
+  usage: schema [--check] [CHART]
   shortHelp: Generate values.schema.json from Helm template usage
   longHelp: Generate a Helm values schema from values used by chart templates.
   ignoreFlags: false

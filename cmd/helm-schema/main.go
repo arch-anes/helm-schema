@@ -3,7 +3,7 @@
 package main
 
 // This file defines argument parsing, tree-wide generation, concise output,
-// and atomic replacement of each schema file.
+// atomic replacement of each schema file, and the read-only check mode.
 
 import (
 	"bytes"
@@ -32,15 +32,17 @@ func main() {
 }
 
 // run parses the command arguments, prepares and validates every schema, then
-// writes the results. Writer arguments let tests capture output safely.
+// writes or checks the results. Writer arguments let tests capture output
+// safely.
 func run(args []string, stdout, stderr io.Writer) error {
-	chartPath, done, err := parseArguments(args, stdout)
+	options, done, err := parseArguments(args, stdout)
 	if err != nil {
 		return err
 	}
 	if done {
 		return nil
 	}
+	chartPath := options.chartPath
 
 	chart, err := helmchart.Load(chartPath)
 	if err != nil {
@@ -71,9 +73,16 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 
 	allowsUnknownRoot := false
-	changed := 0
 	for _, result := range generated {
 		allowsUnknownRoot = allowsUnknownRoot || result.allowsUnknownRoot
+	}
+	if options.check {
+		writePrecisionNote(stderr, allowsUnknownRoot)
+		return checkSchemas(stdout, generated)
+	}
+
+	changed := 0
+	for _, result := range generated {
 		replaced, err := replaceFile(result.path, result.content)
 		if err != nil {
 			return fmt.Errorf("write schema %q: %w", result.path, err)
@@ -149,31 +158,40 @@ func checkGeneratedSchemaSize(directory string, content []byte) error {
 	)
 }
 
-// parseArguments uses the standard flag package for help, version, and the
-// optional chart path. The done result reports help or version output.
-func parseArguments(args []string, stdout io.Writer) (chartPath string, done bool, err error) {
+// commandOptions contains the parsed chart path and generation mode.
+type commandOptions struct {
+	chartPath string
+	check     bool
+}
+
+// parseArguments uses the standard flag package for help, version, check
+// mode, and the optional chart path. The done result reports help or version
+// output.
+func parseArguments(args []string, stdout io.Writer) (options commandOptions, done bool, err error) {
 	flags := flag.NewFlagSet("helm-schema", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	showVersion := flags.Bool("version", false, "show the helm-schema version")
+	check := flags.Bool("check", false, "report schema files that differ from generated output without writing them")
 	flags.Usage = func() { writeHelp(stdout) }
 
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			return "", true, nil
+			return commandOptions{}, true, nil
 		}
-		return "", false, err
+		return commandOptions{}, false, err
 	}
 	if *showVersion {
 		fmt.Fprintf(stdout, "helm-schema %s\n", version)
-		return "", true, nil
+		return commandOptions{}, true, nil
 	}
 	if flags.NArg() > 1 {
-		return "", false, errors.New("usage: helm-schema [CHART]")
+		return commandOptions{}, false, errors.New("usage: helm-schema [--check] [CHART]")
 	}
+	options = commandOptions{chartPath: ".", check: *check}
 	if flags.NArg() == 1 {
-		return flags.Arg(0), false, nil
+		options.chartPath = flags.Arg(0)
 	}
-	return ".", false, nil
+	return options, false, nil
 }
 
 // writePrecisionNote reports one material loss of schema strictness across the
@@ -202,23 +220,60 @@ func writeSummary(w io.Writer, generated []generatedSchema, changed int) {
 	fmt.Fprintf(w, "updated %d of %d schema files\n", changed, len(generated))
 }
 
+// checkSchemas compares each prepared schema with the file on disk without
+// changing the file system. A missing file differs from every schema.
+func checkSchemas(w io.Writer, generated []generatedSchema) error {
+	stale := 0
+	for _, result := range generated {
+		matches, err := fileMatches(result.path, result.content)
+		if err != nil {
+			return fmt.Errorf("read schema %q: %w", result.path, err)
+		}
+		if !matches {
+			fmt.Fprintf(w, "%s is out of date\n", result.path)
+			stale++
+		}
+	}
+	if stale > 0 {
+		return fmt.Errorf("%d of %d schema files are out of date", stale, len(generated))
+	}
+	if len(generated) == 1 {
+		fmt.Fprintf(w, "%s is up to date\n", generated[0].path)
+	} else {
+		fmt.Fprintf(w, "%d schema files are up to date\n", len(generated))
+	}
+	return nil
+}
+
 // writeHelp writes the standalone and Helm plugin command forms.
 func writeHelp(w io.Writer) {
 	fmt.Fprintln(w, "Generate values.schema.json from values used by Helm templates.")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  helm-schema [CHART]")
-	fmt.Fprintln(w, "  helm schema [CHART]")
+	fmt.Fprintln(w, "  helm-schema [--check] [CHART]")
+	fmt.Fprintln(w, "  helm schema [--check] [CHART]")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Options:")
+	fmt.Fprintln(w, "  --check    Exit with status 1 if a schema file differs from generated output; write nothing")
+}
+
+// fileMatches reports whether path exists and contains exactly content.
+func fileMatches(path string, content []byte) (bool, error) {
+	existing, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(existing, content), nil
 }
 
 // replaceFile writes content beside the target and renames it into place. It
 // does not replace the target when its bytes already match content.
 func replaceFile(path string, content []byte) (bool, error) {
-	existing, err := os.ReadFile(path)
-	if err == nil && bytes.Equal(existing, content) {
-		return false, nil
-	}
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	matches, err := fileMatches(path, content)
+	if err != nil || matches {
 		return false, err
 	}
 
